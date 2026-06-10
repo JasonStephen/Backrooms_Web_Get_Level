@@ -471,6 +471,25 @@ def slugify(value: str) -> str:
     return value.replace("/", "_").replace(":", "_")
 
 
+def build_specific_targets(config: dict[str, Any], raw_levels: list[str]) -> list[CrawlTarget]:
+    preferred_paths = config.get("preferred_paths", {})
+    unique: dict[str, CrawlTarget] = {}
+
+    for raw_level in raw_levels:
+        value = raw_level.strip()
+        if not value:
+            continue
+
+        mapped_path = preferred_paths.get(value, value)
+        logical_id = value if value in preferred_paths or ":" not in value else slugify(value)
+        unique[logical_id] = CrawlTarget(logical_id, mapped_path, "specific")
+
+    if not unique:
+        raise SystemExit("Specific mode requires at least one non-empty level in --levels.")
+
+    return list(unique.values())
+
+
 def build_targets(config: dict[str, Any], mode: str, count: int | None, seed: int | None) -> list[CrawlTarget]:
     preferred_paths = config.get("preferred_paths", {})
     unique: dict[str, CrawlTarget] = {}
@@ -479,6 +498,9 @@ def build_targets(config: dict[str, Any], mode: str, count: int | None, seed: in
         for path in sorted(SAMPLES_DIR.glob(config.get("test_samples_glob", "sample_*.html"))):
             unique[path.stem] = CrawlTarget(path.stem, str(path), "sample")
         return list(unique.values())
+
+    if mode == "specific":
+        raise SystemExit("Specific mode must be built with build_specific_targets().")
 
     numeric = config["numeric_range"]
     for number in range(numeric["start"], numeric["end"] + 1):
@@ -497,12 +519,8 @@ def build_targets(config: dict[str, Any], mode: str, count: int | None, seed: in
             raise SystemExit("Complete mode is currently disabled in crawler_config.json.")
         return targets
 
-    if mode == "random":
-        sample_size = count
-        if sample_size is None:
-            default_count = int(config.get("random_default_count", 10))
-            raw_value = input(f"Random count (default {default_count}): ").strip()
-            sample_size = int(raw_value) if raw_value else default_count
+    if mode in {"random", "random-non404"}:
+        sample_size = resolve_sample_size(config, count)
 
         if sample_size < 1:
             raise SystemExit("Random count must be at least 1.")
@@ -510,9 +528,21 @@ def build_targets(config: dict[str, Any], mode: str, count: int | None, seed: in
             raise SystemExit(f"Random count {sample_size} exceeds target pool size {len(targets)}.")
 
         rng = random.Random(seed)
-        return rng.sample(targets, sample_size)
+        if mode == "random":
+            return rng.sample(targets, sample_size)
+        rng.shuffle(targets)
+        return targets
 
     raise SystemExit(f"Unsupported mode: {mode}")
+
+
+def resolve_sample_size(config: dict[str, Any], count: int | None) -> int:
+    sample_size = count
+    if sample_size is None:
+        default_count = int(config.get("random_default_count", 10))
+        raw_value = input(f"Random count (default {default_count}): ").strip()
+        sample_size = int(raw_value) if raw_value else default_count
+    return sample_size
 
 
 def fetch_web_target(target: CrawlTarget, config: dict[str, Any]) -> tuple[int | None, BeautifulSoup | None, str]:
@@ -584,8 +614,21 @@ def process_web_target(target: CrawlTarget, config: dict[str, Any], mode: str) -
     return CrawlResult(target, status_code, True, state.reason, title=title, saved_html=saved_html, saved_md=saved_md)
 
 
-def process_targets(targets: list[CrawlTarget], config: dict[str, Any], mode: str) -> list[CrawlResult]:
+def process_targets(targets: list[CrawlTarget], config: dict[str, Any], mode: str, count: int | None) -> list[CrawlResult]:
     results: list[CrawlResult] = []
+
+    if mode == "random-non404":
+        needed = resolve_sample_size(config, count)
+        qualified = 0
+        for target in targets:
+            result = process_web_target(target, config, mode)
+            results.append(result)
+            if result.status_code != 404:
+                qualified += 1
+            if qualified >= needed:
+                break
+        return results
+
     for target in targets:
         if mode == "test":
             results.append(process_sample_target(target, mode))
@@ -630,18 +673,30 @@ def write_report(results: list[CrawlResult], mode: str) -> Path:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Backrooms wiki crawler with complete, random, and test modes.")
-    parser.add_argument("--mode", choices=["complete", "random", "test"], required=True)
-    parser.add_argument("--count", type=int, help="Random mode only: number of targets to sample.")
+    parser = argparse.ArgumentParser(description="Backrooms wiki crawler with complete, random, random-non404, specific, and test modes.")
+    parser.add_argument("--mode", choices=["complete", "random", "random-non404", "specific", "test"], required=True)
+    parser.add_argument("--count", type=int, help="Random modes only: number of targets to sample.")
     parser.add_argument("--seed", type=int, help="Optional random seed for reproducible random mode runs.")
-    return parser.parse_args()
+    parser.add_argument("--levels", nargs="+", help="Specific mode only: one or more level ids or paths to fetch.")
+    args = parser.parse_args()
+
+    if args.mode == "specific" and not args.levels:
+        parser.error("--levels is required when --mode specific is used.")
+
+    if args.mode != "specific" and args.levels:
+        parser.error("--levels can only be used with --mode specific.")
+
+    return args
 
 
 def main() -> None:
     args = parse_args()
     config = load_config()
-    targets = build_targets(config, args.mode, args.count, args.seed)
-    results = process_targets(targets, config, args.mode)
+    if args.mode == "specific":
+        targets = build_specific_targets(config, args.levels)
+    else:
+        targets = build_targets(config, args.mode, args.count, args.seed)
+    results = process_targets(targets, config, args.mode, args.count)
     report_path = write_report(results, args.mode)
 
     print(f"Mode: {args.mode}")
