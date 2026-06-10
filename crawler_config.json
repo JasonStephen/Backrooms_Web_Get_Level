@@ -1,5 +1,6 @@
 {
   "base_url": "https://backrooms-wiki-cn.wikidot.com",
+  "output_version": "260610-004",
   "request_timeout_seconds": 20,
   "complete_mode_enabled": false,
   "random_default_count": 10,

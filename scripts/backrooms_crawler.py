@@ -4,6 +4,7 @@ import argparse
 import copy
 import json
 import random
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -61,6 +62,7 @@ class CrawlResult:
     status_code: int | None
     has_content: bool
     reason: str
+    version: str = ""
     title: str = ""
     saved_html: str = ""
     saved_md: str = ""
@@ -471,6 +473,64 @@ def slugify(value: str) -> str:
     return value.replace("/", "_").replace(":", "_")
 
 
+def get_output_version(config: dict[str, Any]) -> str:
+    version = str(config.get("output_version", "")).strip()
+    if not version:
+        raise SystemExit("crawler_config.json is missing output_version.")
+    return version
+
+
+def get_output_paths(mode: str, logical_id: str) -> tuple[Path, Path]:
+    slug = slugify(logical_id)
+    html_path = OUTPUT_DIR / "html" / f"{slug}.body.html"
+    md_path = OUTPUT_DIR / "md" / f"{slug}.body.md"
+    return html_path, md_path
+
+
+def relative_output_path(path: Path) -> str:
+    return str(path.relative_to(ROOT))
+
+
+def read_output_version(path: Path) -> str | None:
+    if not path.exists():
+        return None
+
+    text = path.read_text(encoding="utf-8")
+    patterns = [
+        r"crawler_version:\s*([0-9A-Za-z._-]+)",
+        r'crawler-version"\s+content="([0-9A-Za-z._-]+)"',
+        r"data-crawler-version=\"([0-9A-Za-z._-]+)\"",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1)
+    return None
+
+
+def try_reuse_existing_output(target: CrawlTarget, mode: str, config: dict[str, Any]) -> CrawlResult | None:
+    if mode not in {"random", "random-non404", "complete"}:
+        return None
+
+    current_version = get_output_version(config)
+    html_path, md_path = get_output_paths(mode, target.logical_id)
+    html_version = read_output_version(html_path)
+    md_version = read_output_version(md_path)
+
+    if html_version == current_version and md_version == current_version:
+        return CrawlResult(
+            target=target,
+            status_code=None,
+            has_content=True,
+            reason="skipped-same-version",
+            version=current_version,
+            saved_html=relative_output_path(html_path),
+            saved_md=relative_output_path(md_path),
+        )
+
+    return None
+
+
 def build_specific_targets(config: dict[str, Any], raw_levels: list[str]) -> list[CrawlTarget]:
     preferred_paths = config.get("preferred_paths", {})
     unique: dict[str, CrawlTarget] = {}
@@ -560,20 +620,55 @@ def fetch_web_target(target: CrawlTarget, config: dict[str, Any]) -> tuple[int |
     return response.status_code, BeautifulSoup(response.text, "html.parser"), ""
 
 
-def save_article_outputs(article: BeautifulSoup, mode: str, logical_id: str) -> tuple[str, str]:
-    mode_dir = OUTPUT_DIR / mode
-    mode_dir.mkdir(parents=True, exist_ok=True)
+def inject_html_metadata(article: BeautifulSoup, logical_id: str, path: str, version: str) -> BeautifulSoup:
+    article_copy = BeautifulSoup(str(article), "html.parser")
+    article_tag = article_copy.find("article")
+    if article_tag is not None:
+        article_tag["data-crawler-version"] = version
+        article_tag["data-logical-id"] = logical_id
+        article_tag["data-source-path"] = path
 
-    slug = slugify(logical_id)
-    html_path = mode_dir / f"{slug}.body.html"
-    md_path = mode_dir / f"{slug}.body.md"
-
-    html_path.write_text(str(article), encoding="utf-8")
-    md_path.write_text(render_markdown(article.article).strip() + "\n", encoding="utf-8")
-    return str(html_path.relative_to(ROOT)), str(md_path.relative_to(ROOT))
+    meta = article_copy.new_tag("meta")
+    meta["name"] = "crawler-version"
+    meta["content"] = version
+    article_copy.insert(0, meta)
+    return article_copy
 
 
-def process_sample_target(target: CrawlTarget, mode: str) -> CrawlResult:
+def build_markdown_document(article: BeautifulSoup, logical_id: str, path: str, version: str) -> str:
+    body = render_markdown(article.article).strip()
+    metadata = [
+        "---",
+        f"crawler_version: {version}",
+        f"logical_id: {logical_id}",
+        f"source_path: {path}",
+        "---",
+        "",
+    ]
+    return "\n".join(metadata) + body + "\n"
+
+
+def save_article_outputs(
+    article: BeautifulSoup,
+    mode: str,
+    logical_id: str,
+    path: str,
+    version: str,
+) -> tuple[str, str]:
+    html_path, md_path = get_output_paths(mode, logical_id)
+    html_path.parent.mkdir(parents=True, exist_ok=True)
+    md_path.parent.mkdir(parents=True, exist_ok=True)
+
+    html_document = inject_html_metadata(article, logical_id, path, version)
+    md_document = build_markdown_document(article, logical_id, path, version)
+
+    html_path.write_text(str(html_document), encoding="utf-8")
+    md_path.write_text(md_document, encoding="utf-8")
+    return relative_output_path(html_path), relative_output_path(md_path)
+
+
+def process_sample_target(target: CrawlTarget, config: dict[str, Any], mode: str) -> CrawlResult:
+    version = get_output_version(config)
     source_path = Path(target.path)
     soup = BeautifulSoup(source_path.read_text(encoding="utf-8"), "html.parser")
     state = detect_article_state(soup)
@@ -585,21 +680,26 @@ def process_sample_target(target: CrawlTarget, mode: str) -> CrawlResult:
         title = clean_text(page_title.get_text(" ", strip=True))
 
     if not state.has_article:
-        return CrawlResult(target, None, False, state.reason, title=title)
+        return CrawlResult(target, None, False, state.reason, version=version, title=title)
 
     article = extract_article_from_soup(soup)
-    saved_html, saved_md = save_article_outputs(article, mode, target.logical_id)
-    return CrawlResult(target, None, True, state.reason, title=title, saved_html=saved_html, saved_md=saved_md)
+    saved_html, saved_md = save_article_outputs(article, mode, target.logical_id, target.path, version)
+    return CrawlResult(target, None, True, state.reason, version=version, title=title, saved_html=saved_html, saved_md=saved_md)
 
 
 def process_web_target(target: CrawlTarget, config: dict[str, Any], mode: str) -> CrawlResult:
+    version = get_output_version(config)
+    reused = try_reuse_existing_output(target, mode, config)
+    if reused is not None:
+        return reused
+
     status_code, soup, error = fetch_web_target(target, config)
     if error:
-        return CrawlResult(target, status_code, False, "request-error", error=error)
+        return CrawlResult(target, status_code, False, "request-error", version=version, error=error)
     if status_code == 404:
-        return CrawlResult(target, 404, False, "http-404")
+        return CrawlResult(target, 404, False, "http-404", version=version)
     if soup is None:
-        return CrawlResult(target, status_code, False, "missing-response-body")
+        return CrawlResult(target, status_code, False, "missing-response-body", version=version)
 
     state = detect_article_state(soup)
     main = soup.select_one("#main-content")
@@ -607,11 +707,20 @@ def process_web_target(target: CrawlTarget, config: dict[str, Any], mode: str) -
     title = clean_text(page_title.get_text(" ", strip=True)) if page_title is not None else ""
 
     if not state.has_article:
-        return CrawlResult(target, status_code, False, state.reason, title=title)
+        return CrawlResult(target, status_code, False, state.reason, version=version, title=title)
 
     article = extract_article_from_soup(soup)
-    saved_html, saved_md = save_article_outputs(article, mode, target.logical_id)
-    return CrawlResult(target, status_code, True, state.reason, title=title, saved_html=saved_html, saved_md=saved_md)
+    saved_html, saved_md = save_article_outputs(article, mode, target.logical_id, target.path, version)
+    return CrawlResult(
+        target,
+        status_code,
+        True,
+        state.reason,
+        version=version,
+        title=title,
+        saved_html=saved_html,
+        saved_md=saved_md,
+    )
 
 
 def process_targets(targets: list[CrawlTarget], config: dict[str, Any], mode: str, count: int | None) -> list[CrawlResult]:
@@ -623,7 +732,7 @@ def process_targets(targets: list[CrawlTarget], config: dict[str, Any], mode: st
         for target in targets:
             result = process_web_target(target, config, mode)
             results.append(result)
-            if result.status_code != 404:
+            if result.has_content or result.status_code != 404:
                 qualified += 1
             if qualified >= needed:
                 break
@@ -631,7 +740,7 @@ def process_targets(targets: list[CrawlTarget], config: dict[str, Any], mode: st
 
     for target in targets:
         if mode == "test":
-            results.append(process_sample_target(target, mode))
+            results.append(process_sample_target(target, config, mode))
         else:
             results.append(process_web_target(target, config, mode))
     return results
@@ -652,6 +761,8 @@ def write_report(results: list[CrawlResult], mode: str) -> Path:
             lines.append(f"HTTP Status: {result.status_code}")
         lines.append(f"Has Content: {'yes' if result.has_content else 'no'}")
         lines.append(f"Reason: {result.reason}")
+        if result.version:
+            lines.append(f"Version: {result.version}")
         if result.title:
             lines.append(f"Title: {result.title}")
         if result.saved_html:
