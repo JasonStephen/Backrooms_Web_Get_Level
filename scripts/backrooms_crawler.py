@@ -6,6 +6,7 @@ import copy
 import json
 import random
 import re
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,13 @@ UNWANTED_SELECTORS = [
     "#action-area-top",
 ]
 
+AUTHOR_METADATA_MARKERS = (
+    "作者信息",
+    "展开作者",
+    "展示作者",
+    "作者",
+)
+
 SURVIVAL_DEFAULTS = {
     "class-1": ["安全", "稳定", "极少量实体"],
     "class-pending": ["安全性未知", "不稳定", "未探明实体存在"],
@@ -68,6 +76,9 @@ class CrawlResult:
     saved_html: str = ""
     saved_md: str = ""
     error: str = ""
+
+
+DEBUG_PRINT_LOCK = threading.Lock()
 
 
 def clean_text(text: str) -> str:
@@ -731,7 +742,48 @@ def process_web_target(target: CrawlTarget, config: dict[str, Any], mode: str) -
     )
 
 
-def process_targets(targets: list[CrawlTarget], config: dict[str, Any], mode: str, count: int | None) -> list[CrawlResult]:
+def print_debug_result(result: CrawlResult, config: dict[str, Any], mode: str) -> None:
+    status = result.status_code if result.status_code is not None else "-"
+    url = f"{config['base_url']}/{result.target.path}" if mode != "test" else result.target.path
+    message = (
+        f"[debug] {result.target.logical_id} "
+        f"status={status} has_content={'yes' if result.has_content else 'no'} "
+        f"reason={result.reason} source={result.target.source} url={url}"
+    )
+    if result.error:
+        message += f" error={result.error}"
+    with DEBUG_PRINT_LOCK:
+        print(message)
+
+
+def print_progress_result(result: CrawlResult) -> None:
+    if result.reason == "skipped-same-version":
+        label = "reuse"
+    elif result.has_content:
+        label = "saved"
+    elif result.reason == "http-404":
+        label = "404"
+    elif result.reason == "request-error":
+        label = "error"
+    else:
+        label = "skip"
+
+    status = result.status_code if result.status_code is not None else "-"
+    message = f"[{label}] {result.target.logical_id} status={status} reason={result.reason}"
+    if result.error:
+        message += f" error={result.error}"
+    with DEBUG_PRINT_LOCK:
+        print(message)
+
+
+def process_targets(
+    targets: list[CrawlTarget],
+    config: dict[str, Any],
+    mode: str,
+    count: int | None,
+    debug: bool = False,
+    show_progress: bool = True,
+) -> list[CrawlResult]:
     results: list[CrawlResult] = []
 
     if mode == "random-non404":
@@ -740,6 +792,10 @@ def process_targets(targets: list[CrawlTarget], config: dict[str, Any], mode: st
         for target in targets:
             result = process_web_target(target, config, mode)
             results.append(result)
+            if debug:
+                print_debug_result(result, config, mode)
+            elif show_progress:
+                print_progress_result(result)
             if result.has_content or result.status_code != 404:
                 qualified += 1
             if qualified >= needed:
@@ -756,14 +812,24 @@ def process_targets(targets: list[CrawlTarget], config: dict[str, Any], mode: st
                     for index, target in enumerate(targets)
                 }
                 for future in concurrent.futures.as_completed(future_map):
-                    indexed_results[future_map[future]] = future.result()
+                    result = future.result()
+                    indexed_results[future_map[future]] = result
+                    if debug:
+                        print_debug_result(result, config, mode)
+                    elif show_progress:
+                        print_progress_result(result)
             return [result for result in indexed_results if result is not None]
 
     for target in targets:
         if mode == "test":
-            results.append(process_sample_target(target, config, mode))
+            result = process_sample_target(target, config, mode)
         else:
-            results.append(process_web_target(target, config, mode))
+            result = process_web_target(target, config, mode)
+        results.append(result)
+        if debug:
+            print_debug_result(result, config, mode)
+        elif show_progress:
+            print_progress_result(result)
     return results
 
 
@@ -810,6 +876,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--count", type=int, help="Random modes only: number of targets to sample.")
     parser.add_argument("--seed", type=int, help="Optional random seed for reproducible random mode runs.")
     parser.add_argument("--levels", nargs="+", help="Specific mode only: one or more level ids or paths to fetch.")
+    parser.add_argument("--debug", action="store_true", help="Print per-target request results to the console.")
+    parser.add_argument("--quiet", action="store_true", help="Suppress per-target progress output.")
     args = parser.parse_args()
 
     if args.mode == "specific" and not args.levels:
@@ -828,7 +896,14 @@ def main() -> None:
         targets = build_specific_targets(config, args.levels)
     else:
         targets = build_targets(config, args.mode, args.count, args.seed)
-    results = process_targets(targets, config, args.mode, args.count)
+    results = process_targets(
+        targets,
+        config,
+        args.mode,
+        args.count,
+        debug=args.debug,
+        show_progress=not args.quiet,
+    )
     report_path = write_report(results, args.mode)
 
     print(f"Mode: {args.mode}")
