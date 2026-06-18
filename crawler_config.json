@@ -2,10 +2,11 @@
   "base_url": "https://backrooms-wiki-cn.wikidot.com",
   "output_version": "260610-004",
   "request_timeout_seconds": 20,
-  "complete_mode_enabled": false,
+  "worker_count": 8,
+  "complete_mode_enabled": true,
   "random_default_count": 10,
   "numeric_range": {
-    "start": 1,
+    "start": 0,
     "end": 999
   },
   "whitelist_extra_paths": [

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import copy
 import json
 import random
@@ -605,6 +606,13 @@ def resolve_sample_size(config: dict[str, Any], count: int | None) -> int:
     return sample_size
 
 
+def resolve_worker_count(config: dict[str, Any]) -> int:
+    worker_count = int(config.get("worker_count", 4))
+    if worker_count < 1:
+        raise SystemExit("worker_count must be at least 1.")
+    return worker_count
+
+
 def fetch_web_target(target: CrawlTarget, config: dict[str, Any]) -> tuple[int | None, BeautifulSoup | None, str]:
     url = f"{config['base_url']}/{target.path}"
     timeout = int(config.get("request_timeout_seconds", 20))
@@ -737,6 +745,19 @@ def process_targets(targets: list[CrawlTarget], config: dict[str, Any], mode: st
             if qualified >= needed:
                 break
         return results
+
+    if mode != "test":
+        worker_count = min(resolve_worker_count(config), len(targets))
+        if worker_count > 1:
+            indexed_results: list[CrawlResult | None] = [None] * len(targets)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+                future_map = {
+                    executor.submit(process_web_target, target, config, mode): index
+                    for index, target in enumerate(targets)
+                }
+                for future in concurrent.futures.as_completed(future_map):
+                    indexed_results[future_map[future]] = future.result()
+            return [result for result in indexed_results if result is not None]
 
     for target in targets:
         if mode == "test":
