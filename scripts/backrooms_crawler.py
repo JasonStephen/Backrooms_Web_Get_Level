@@ -626,6 +626,108 @@ def resolve_sample_size(config: dict[str, Any], count: int | None) -> int:
     return sample_size
 
 
+def prompt_choice(prompt: str, options: list[tuple[str, str]], default_key: str | None = None) -> str:
+    while True:
+        print(prompt)
+        for key, label in options:
+            default_suffix = " [default]" if key == default_key else ""
+            print(f"  {key}) {label}{default_suffix}")
+
+        raw_value = input("Select: ").strip().lower()
+        selected = raw_value or (default_key or "")
+        if any(key == selected for key, _ in options):
+            return selected
+
+        print("Invalid selection. Please try again.\n")
+
+
+def prompt_int(prompt: str, default: int | None = None, minimum: int | None = None) -> int:
+    while True:
+        suffix = f" [default {default}]" if default is not None else ""
+        raw_value = input(f"{prompt}{suffix}: ").strip()
+        if not raw_value and default is not None:
+            value = default
+        else:
+            try:
+                value = int(raw_value)
+            except ValueError:
+                print("Please enter a valid integer.\n")
+                continue
+
+        if minimum is not None and value < minimum:
+            print(f"Please enter a value greater than or equal to {minimum}.\n")
+            continue
+
+        return value
+
+
+def prompt_yes_no(prompt: str, default: bool = False) -> bool:
+    suffix = "Y/n" if default else "y/N"
+    while True:
+        raw_value = input(f"{prompt} [{suffix}]: ").strip().lower()
+        if not raw_value:
+            return default
+        if raw_value in {"y", "yes"}:
+            return True
+        if raw_value in {"n", "no"}:
+            return False
+        print("Please answer y or n.\n")
+
+
+def prompt_levels() -> list[str]:
+    while True:
+        raw_value = input("Enter level ids or paths, separated by spaces: ").strip()
+        levels = [value for value in raw_value.split() if value]
+        if levels:
+            return levels
+        print("Please enter at least one level.\n")
+
+
+def build_interactive_args(config: dict[str, Any]) -> argparse.Namespace:
+    mode_options = [
+        ("1", "test"),
+        ("2", "random"),
+        ("3", "random-non404"),
+        ("4", "specific"),
+        ("5", "complete"),
+    ]
+    selected_mode = prompt_choice(
+        "Choose crawl mode:",
+        [(key, label) for key, label in mode_options],
+        default_key="1",
+    )
+    mode = dict(mode_options)[selected_mode]
+
+    count: int | None = None
+    seed: int | None = None
+    levels: list[str] | None = None
+
+    if mode in {"random", "random-non404"}:
+        count = prompt_int(
+            "Random count",
+            default=int(config.get("random_default_count", 10)),
+            minimum=1,
+        )
+        if prompt_yes_no("Use a fixed random seed?", default=False):
+            seed = prompt_int("Random seed", minimum=0)
+
+    if mode == "specific":
+        levels = prompt_levels()
+
+    debug = prompt_yes_no("Enable debug output?", default=False)
+    quiet = False if debug else prompt_yes_no("Suppress per-target progress output?", default=False)
+
+    return argparse.Namespace(
+        mode=mode,
+        count=count,
+        seed=seed,
+        levels=levels,
+        debug=debug,
+        quiet=quiet,
+        interactive=True,
+    )
+
+
 def resolve_worker_count(config: dict[str, Any]) -> int:
     worker_count = int(config.get("worker_count", 4))
     if worker_count < 1:
@@ -881,13 +983,28 @@ def write_report(results: list[CrawlResult], mode: str) -> Path:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Backrooms wiki crawler with complete, random, random-non404, specific, and test modes.")
-    parser.add_argument("--mode", choices=["complete", "random", "random-non404", "specific", "test"], required=True)
+    parser.add_argument("--mode", choices=["complete", "random", "random-non404", "specific", "test"])
     parser.add_argument("--count", type=int, help="Random modes only: number of targets to sample.")
     parser.add_argument("--seed", type=int, help="Optional random seed for reproducible random mode runs.")
     parser.add_argument("--levels", nargs="+", help="Specific mode only: one or more level ids or paths to fetch.")
     parser.add_argument("--debug", action="store_true", help="Print per-target request results to the console.")
     parser.add_argument("--quiet", action="store_true", help="Suppress per-target progress output.")
+    parser.add_argument("--interactive", action="store_true", help="Launch interactive terminal prompts.")
     args = parser.parse_args()
+
+    if args.interactive:
+        return args
+
+    if args.mode is None:
+        return argparse.Namespace(
+            mode=None,
+            count=args.count,
+            seed=args.seed,
+            levels=args.levels,
+            debug=args.debug,
+            quiet=args.quiet,
+            interactive=True,
+        )
 
     if args.mode == "specific" and not args.levels:
         parser.error("--levels is required when --mode specific is used.")
@@ -901,6 +1018,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     config = load_config()
+    if args.interactive:
+        args = build_interactive_args(config)
     if args.mode == "specific":
         targets = build_specific_targets(config, args.levels)
     else:
