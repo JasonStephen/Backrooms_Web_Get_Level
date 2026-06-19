@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
+
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -419,8 +425,10 @@ def build_missing_descriptions_text(results: list[dict[str, object]]) -> str:
     return "\n".join(lines)
 
 
-def build_status_report_text(results: list[dict[str, object]]) -> str:
-    lines = ["Entry/Exit extraction status", ""]
+def build_status_report_csv(results: list[dict[str, object]]) -> str:
+    output = io.StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(["logical_id", "入口描述", "入口层级", "出口描述", "出口层级"])
 
     for item in results:
         has_entrance_description = bool(item["entrances"])
@@ -428,14 +436,132 @@ def build_status_report_text(results: list[dict[str, object]]) -> str:
         has_exit_description = bool(item["exits"])
         has_exit_level_ids = bool(item["exit_level_ids"])
 
-        lines.append(f"{item['logical_id']} ({item['file']})")
-        lines.append(f"  入口描述: {'✔️' if has_entrance_description else '❌'}")
-        lines.append(f"  入口层级: {'✔️' if has_entrance_level_ids else '❌'}")
-        lines.append(f"  出口描述: {'✔️' if has_exit_description else '❌'}")
-        lines.append(f"  出口层级: {'✔️' if has_exit_level_ids else '❌'}")
-        lines.append("")
+        writer.writerow([
+            item["logical_id"],
+            has_entrance_description,
+            has_entrance_level_ids,
+            has_exit_description,
+            has_exit_level_ids,
+        ])
 
-    return "\n".join(lines)
+    return output.getvalue()
+
+
+def build_status_report_xlsx(results: list[dict[str, object]], output_path: Path) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "出入口状态"
+
+    header_font = Font(bold=True, size=11)
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    header_font_white = Font(bold=True, size=11, color="FFFFFF")
+    center_align = Alignment(horizontal="center", vertical="center")
+    green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+    green_font = Font(color="006100", size=11)
+    red_font = Font(color="9C0006", size=11)
+
+    headers = ["logical_id", "入口描述", "入口层级", "出口描述", "出口层级"]
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font_white
+        cell.fill = header_fill
+        cell.alignment = center_align
+
+    for row_idx, item in enumerate(results, 2):
+        has_entrance_description = bool(item["entrances"])
+        has_entrance_level_ids = bool(item["entrance_level_ids"])
+        has_exit_description = bool(item["exits"])
+        has_exit_level_ids = bool(item["exit_level_ids"])
+
+        values = [
+            item["logical_id"],
+            "✔ 有" if has_entrance_description else "✘ 无",
+            "✔ 有" if has_entrance_level_ids else "✘ 无",
+            "✔ 有" if has_exit_description else "✘ 无",
+            "✔ 有" if has_exit_level_ids else "✘ 无",
+        ]
+
+        for col, value in enumerate(values, 1):
+            cell = ws.cell(row=row_idx, column=col, value=value)
+            cell.alignment = center_align
+            if col == 1:
+                cell.font = Font(size=11)
+            elif "✔" in str(value):
+                cell.fill = green_fill
+                cell.font = green_font
+            else:
+                cell.fill = red_fill
+                cell.font = red_font
+
+    col_widths = [24, 12, 12, 12, 12]
+    for col, width in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(col)].width = width
+
+    ws.auto_filter.ref = f"A1:E{len(results) + 1}"
+    ws.freeze_panes = "A2"
+
+    # ----- Sheet 2: 统计分析 -----
+    ws2 = wb.create_sheet("统计分析")
+
+    total = len(results)
+    ent_desc = sum(1 for r in results if r["entrances"])
+    ent_desc_id = sum(1 for r in results if r["entrances"] and r["entrance_level_ids"])
+    exit_desc = sum(1 for r in results if r["exits"])
+    exit_desc_id = sum(1 for r in results if r["exits"] and r["exit_level_ids"])
+    both_desc = sum(1 for r in results if r["entrances"] and r["exits"])
+    both_desc_id = sum(1 for r in results if r["entrances"] and r["entrance_level_ids"] and r["exits"] and r["exit_level_ids"])
+
+    stats = [
+        ("总文章数", total, ""),
+        ("", "", ""),
+        ("指标", "命中数", "成功率"),
+        ("入口描述文本", ent_desc, f"{ent_desc/total*100:.1f}%"),
+        ("入口描述文本 + 层级ID", ent_desc_id, f"{ent_desc_id/total*100:.1f}%"),
+        ("出口描述文本", exit_desc, f"{exit_desc/total*100:.1f}%"),
+        ("出口描述文本 + 层级ID", exit_desc_id, f"{exit_desc_id/total*100:.1f}%"),
+        ("入口 + 出口描述文本", both_desc, f"{both_desc/total*100:.1f}%"),
+        ("入口 + 出口描述文本 + 双ID", both_desc_id, f"{both_desc_id/total*100:.1f}%"),
+    ]
+
+    title_font = Font(bold=True, size=14, color="4472C4")
+    header_fill2 = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    header_font_white2 = Font(bold=True, size=11, color="FFFFFF")
+    percent_font_green = Font(bold=True, size=11, color="006100")
+    percent_font_yellow = Font(bold=True, size=11, color="9C6500")
+    percent_font_red = Font(bold=True, size=11, color="9C0006")
+
+    ws2.merge_cells("A1:C1")
+    ws2.cell(row=1, column=1, value="出入口信息获取成功率统计").font = title_font
+
+    for row_idx, (label, count, rate) in enumerate(stats, 2):
+        cell_a = ws2.cell(row=row_idx, column=1, value=label)
+        cell_b = ws2.cell(row=row_idx, column=2, value=count if count != "" else "")
+        cell_c = ws2.cell(row=row_idx, column=3, value=rate)
+
+        if label == "指标":
+            for c in [cell_a, cell_b, cell_c]:
+                c.font = header_font_white2
+                c.fill = header_fill2
+                c.alignment = center_align
+        elif label and not label.startswith("总"):
+            cell_a.alignment = Alignment(horizontal="right")
+            cell_b.alignment = center_align
+            cell_c.alignment = center_align
+
+            pct = float(rate.strip("%"))
+            if pct >= 60:
+                cell_c.font = percent_font_green
+            elif pct >= 45:
+                cell_c.font = percent_font_yellow
+            else:
+                cell_c.font = percent_font_red
+
+    ws2.column_dimensions["A"].width = 34
+    ws2.column_dimensions["B"].width = 12
+    ws2.column_dimensions["C"].width = 12
+
+    wb.save(output_path)
 
 
 def write_outputs(results: list[dict[str, object]], output_dir: Path) -> None:
@@ -443,7 +569,8 @@ def write_outputs(results: list[dict[str, object]], output_dir: Path) -> None:
 
     description_path = output_dir / "entry_exit_descriptions.json"
     level_path = output_dir / "entry_exit_level_ids.json"
-    status_report_path = output_dir / "entry_exit_status.txt"
+    status_csv_path = output_dir / "entry_exit_status.csv"
+    status_xlsx_path = output_dir / "entry_exit_status.xlsx"
 
     description_path.write_text(
         json.dumps(build_description_output(results), ensure_ascii=False, indent=2),
@@ -453,7 +580,8 @@ def write_outputs(results: list[dict[str, object]], output_dir: Path) -> None:
         json.dumps(build_level_output(results), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    status_report_path.write_text(build_status_report_text(results), encoding="utf-8")
+    status_csv_path.write_text(build_status_report_csv(results), encoding="utf-8")
+    build_status_report_xlsx(results, status_xlsx_path)
 
     for stale_txt in [
         output_dir / "missing_level_ids.txt",
@@ -464,7 +592,8 @@ def write_outputs(results: list[dict[str, object]], output_dir: Path) -> None:
 
     print(f"Wrote description output to {description_path}")
     print(f"Wrote level-id output to {level_path}")
-    print(f"Wrote status report to {status_report_path}")
+    print(f"Wrote status report to {status_csv_path}")
+    print(f"Wrote status xlsx to {status_xlsx_path}")
 
 
 def parse_args() -> argparse.Namespace:
