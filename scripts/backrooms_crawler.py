@@ -580,6 +580,15 @@ def build_targets(config: dict[str, Any], mode: str, count: int | None, seed: in
         path = preferred_paths.get(logical_id, logical_id)
         unique[logical_id] = CrawlTarget(logical_id, path, "numeric")
 
+    for prefixed_range in config.get("prefixed_ranges", []):
+        prefix = str(prefixed_range["prefix"])
+        start = int(prefixed_range["start"])
+        end = int(prefixed_range["end"])
+        for number in range(start, end + 1):
+            logical_id = f"{prefix}{number}"
+            path = preferred_paths.get(logical_id, logical_id)
+            unique[logical_id] = CrawlTarget(logical_id, path, "prefixed-range")
+
     for extra_path in config.get("whitelist_extra_paths", []):
         path = preferred_paths.get(extra_path, extra_path)
         unique[extra_path] = CrawlTarget(extra_path, path, "whitelist")
