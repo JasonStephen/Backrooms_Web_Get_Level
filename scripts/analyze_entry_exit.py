@@ -34,6 +34,11 @@ ENTRANCE_ALIASES = {
     "进入方式",
     "进入方法",
     "进入途径",
+    "已记录入口",
+    "记录入口",
+    "如何抵达",
+    "抵达方式",
+    "进入",
 }
 
 EXIT_ALIASES = {
@@ -42,6 +47,17 @@ EXIT_ALIASES = {
     "离开方式",
     "离开方法",
     "离开途径",
+    "已记录出口",
+    "记录出口",
+    "离开",
+    "撤离",
+    "撤离点",
+    "逃生",
+    "逃生地点",
+    "逃脱",
+    "出路",
+    "退路",
+    "返回",
 }
 
 COMBINED_ALIASES = {
@@ -49,9 +65,50 @@ COMBINED_ALIASES = {
     "入口和出口",
     "出入口",
     "入口出口",
+    "已记录入口与出口",
+    "已记录入口和出口",
+    "记录入口与出口",
+    "记录入口和出口",
+    "出入端口",
+    "通行",
+    "进路与出路",
+    "入口及撤离点",
+    "入口和逃生地点",
+    "入口与撤离",
 }
 
+CORE_ENTRANCE_ALIAS = "入口"
+CORE_EXIT_ALIAS = "出口"
+CORE_COMBINED_ALIASES = {"入口与出口", "入口和出口", "出入口", "入口出口"}
+
 ENTRY_EXIT_SIGNAL_RE = re.compile(r"(入口|出口|进入|离开|逃离|切出|返回|通往|通过|经由)")
+
+ENT_METHOD_RE = re.compile(r"(进入.*方法|进入.*方式|入口.*位于|入口.*在|可通过|可以从|经由|从.*进入|来到|进入.*Level|到达.*Level)")
+EXIT_METHOD_RE = re.compile(r"(离开.*方法|离开.*方式|出口.*位于|出口.*在|可通过.*离开|可以从.*离开|通往.*Level|切出.*到|返回.*到|穿过.*门|通向.*层级)")
+
+ENT_KEY = re.compile(r"(入口|出口|进入|离开|逃离|切出|切入|返回|通往|通行|抵达|转移|穿越)")
+
+BOLD_PSEUDO_RE = re.compile(r"^\s*\*\*(.+?)\*\*\s*$")
+
+NON_EE_HEADING_KEYWORDS = {"作者", "授权", "脚注", "来源", "图源", "译者", "翻译", "版权", "协议", "附件", "附录", "投票", "评论"}
+
+NARRATIVE_EXIT_PATTERNS = (
+    r"离开了房间",
+    r"离开了这里",
+    r"离开家",
+    r"再也没有.*离开",
+    r"别.*离开",
+    r"不要.*离开",
+    r"未曾.*离开",
+    r"从来没有离开过",
+    r"不会.*离开",
+    r"离开了柜台",
+    r"我爱你",
+    r"答应我",
+    r"一个吻",
+    r"两颗心",
+    r"喘息着说道",
+)
 
 ENTRANCE_KEYWORDS = (
     "进入",
@@ -200,7 +257,10 @@ def classify_block(block: str) -> str | None:
 def find_sections(section: Section, normalized_titles: set[str]) -> list[Section]:
     matches: list[Section] = []
     for child in section.children:
-        if normalize_heading(child.title) in normalized_titles:
+        norm = normalize_heading(child.title)
+        if norm in normalized_titles:
+            matches.append(child)
+        elif any(alias in norm for alias in normalized_titles):
             matches.append(child)
         matches.extend(find_sections(child, normalized_titles))
     return matches
@@ -216,28 +276,74 @@ def unique_blocks(blocks: Iterable[str]) -> list[str]:
     return result
 
 
+def _matches_alias(norm: str, aliases: set[str]) -> bool:
+    if norm in aliases:
+        return True
+    return any(alias in norm for alias in aliases)
+
+
+def _section_has_entry_exit_signal(section: Section) -> bool:
+    all_text = " ".join(collect_text_lines(section))
+    return bool(ENTRY_EXIT_SIGNAL_RE.search(all_text))
+
+
 def extract_from_combined_section(section: Section) -> tuple[list[str], list[str]]:
     entrances: list[str] = []
     exits: list[str] = []
 
-    direct_entrances = [child for child in section.children if normalize_heading(child.title) in ENTRANCE_ALIASES]
-    direct_exits = [child for child in section.children if normalize_heading(child.title) in EXIT_ALIASES]
+    # Find marker section indices among children
+    entrance_indices: list[int] = []
+    exit_indices: list[int] = []
+    for i, child in enumerate(section.children):
+        norm = normalize_heading(child.title)
+        if _matches_alias(norm, ENTRANCE_ALIASES) and not _matches_alias(norm, COMBINED_ALIASES):
+            entrance_indices.append(i)
+        if _matches_alias(norm, EXIT_ALIASES) and not _matches_alias(norm, COMBINED_ALIASES):
+            exit_indices.append(i)
 
-    for child in direct_entrances:
-        entrances.extend(split_blocks(collect_text_lines(child)))
-    for child in direct_exits:
-        exits.extend(split_blocks(collect_text_lines(child)))
+    section_blocks = split_blocks(section.lines)
 
-    if entrances or exits:
+    if entrance_indices and exit_indices:
+        first_ent = entrance_indices[0]
+        first_exit = exit_indices[0]
+
+        # Entrance: all children between entrance and exit markers (skip noise)
+        entrances.extend(section_blocks)
+        for child in section.children[first_ent:first_exit]:
+            if not _is_noise_heading(child.title):
+                entrances.extend(split_blocks(collect_text_lines(child)))
+
+        # Exit: all children from exit marker onwards (skip noise)
+        for child in section.children[first_exit:]:
+            if not _is_noise_heading(child.title):
+                exits.extend(split_blocks(collect_text_lines(child)))
+
         return unique_blocks(entrances), unique_blocks(exits)
 
+    if entrance_indices:
+        first_ent = entrance_indices[0]
+        entrances.extend(section_blocks)
+        for child in section.children[first_ent:]:
+            if _section_has_entry_exit_signal(child):
+                entrances.extend(split_blocks(collect_text_lines(child)))
+        return unique_blocks(entrances), unique_blocks(exits)
+
+    if exit_indices:
+        first_exit = exit_indices[0]
+        exits.extend(section_blocks)
+        for child in section.children[first_exit:]:
+            if _section_has_entry_exit_signal(child):
+                exits.extend(split_blocks(collect_text_lines(child)))
+        return unique_blocks(entrances), unique_blocks(exits)
+
+    # No child markers found — classify section.lines text blocks
     current_bucket: str | None = None
-    for block in split_blocks(section.lines):
+    for block in section_blocks:
         normalized_block = normalize_heading(block)
-        if normalized_block in ENTRANCE_ALIASES:
+        if _matches_alias(normalized_block, ENTRANCE_ALIASES) and not _matches_alias(normalized_block, COMBINED_ALIASES):
             current_bucket = "entrances"
             continue
-        if normalized_block in EXIT_ALIASES:
+        if _matches_alias(normalized_block, EXIT_ALIASES) and not _matches_alias(normalized_block, COMBINED_ALIASES):
             current_bucket = "exits"
             continue
 
@@ -257,34 +363,88 @@ def extract_from_combined_section(section: Section) -> tuple[list[str], list[str
     return unique_blocks(entrances), unique_blocks(exits)
 
 
-def extract_entry_exit(text: str) -> dict[str, list[str]]:
+def _scan_body_for_ee(tree: Section) -> tuple[list[str], list[str]]:
+    blocks = split_blocks(collect_text_lines(tree))
+    entrances: list[str] = []
+    exits: list[str] = []
+    for block in blocks:
+        if _is_narrative_noise(block):
+            continue
+        bucket = classify_block(block)
+        if bucket == "entrances":
+            entrances.append(block)
+        elif bucket == "exits":
+            exits.append(block)
+    return entrances, exits
+
+
+def extract_entry_exit(text: str) -> dict[str, object]:
     tree = parse_markdown_sections(text)
     entrances: list[str] = []
     exits: list[str] = []
 
     combined_sections = find_sections(tree, COMBINED_ALIASES)
-    for section in combined_sections:
-        combined_entrances, combined_exits = extract_from_combined_section(section)
+    if combined_sections:
+        combined_entrances, combined_exits = extract_from_combined_section(combined_sections[-1])
         entrances.extend(combined_entrances)
         exits.extend(combined_exits)
 
     standalone_entrances = find_sections(tree, ENTRANCE_ALIASES)
     standalone_exits = find_sections(tree, EXIT_ALIASES)
 
-    for section in standalone_entrances:
+    if standalone_entrances:
+        section = standalone_entrances[-1]
         entrances.extend(split_blocks(section.lines))
+        for child in section.children:
+            if _section_has_entry_exit_signal(child):
+                entrances.extend(split_blocks(collect_text_lines(child)))
 
-    for section in standalone_exits:
+    if standalone_exits:
+        section = standalone_exits[-1]
         exits.extend(split_blocks(section.lines))
+        for child in section.children:
+            if _section_has_entry_exit_signal(child):
+                exits.extend(split_blocks(collect_text_lines(child)))
+
+    entrances = unique_blocks(entrances)
+    exits = unique_blocks(exits)
+
+    if not entrances and not exits:
+        body_entrances, body_exits = _scan_body_for_ee(tree)
+        if body_entrances or body_exits:
+            return {
+                "entrances": unique_blocks(body_entrances),
+                "exits": unique_blocks(body_exits),
+                "confidence": "low",
+            }
+        return {
+            "entrances": [],
+            "exits": [],
+            "confidence": "none",
+        }
 
     return {
-        "entrances": unique_blocks(entrances),
-        "exits": unique_blocks(exits),
+        "entrances": entrances,
+        "exits": exits,
+        "confidence": "high",
     }
 
 
 def logical_id_from_filename(path: Path) -> str:
     return path.name.removesuffix(".body.md")
+
+
+def _natural_sort_key(path: Path) -> tuple[list[int], str]:
+    """Sort key: numeric parts first, then raw string for tie-breaking."""
+    logical_id = path.name.removesuffix(".body.md")
+    parts = logical_id.split("-")
+    nums: list[int] = []
+    for p in parts:
+        try:
+            nums.append(int(p))
+        except ValueError:
+            nums.append(10**9)  # non-numeric like "sanctum" goes to end
+    return (nums, logical_id)
 
 
 def normalize_level_token(token: str) -> str:
@@ -318,6 +478,62 @@ def extract_level_ids_from_block(block: str, current_level_id: str) -> list[str]
     return unique_blocks(level_ids)
 
 
+def _determine_status(has_desc: bool, is_leak: bool) -> str:
+    if has_desc:
+        return "已捕获"
+    if is_leak:
+        return "漏网"
+    return "确认无"
+
+
+def _is_noise_heading(title: str) -> bool:
+    norm = normalize_heading(title)
+    return any(kw in norm for kw in NON_EE_HEADING_KEYWORDS)
+
+
+def _is_narrative_noise(block: str) -> bool:
+    for pat in NARRATIVE_EXIT_PATTERNS:
+        if re.search(pat, block):
+            return True
+    return False
+
+
+def _check_body_has_leak(text: str, method_re: re.Pattern) -> bool:
+    lines = text.splitlines()
+    fm_end = 0
+    if len(lines) >= 3 and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                fm_end = i + 1
+                break
+    body = "\n".join(lines[fm_end:])
+    return bool(method_re.search(body))
+
+
+def _has_bold_pseudo_heading(text: str, target: str) -> bool:
+    """Check if article has bold-text pseudo-headings for entrance/exit."""
+    lines = text.splitlines()
+    fm_end = 0
+    if len(lines) >= 3 and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                fm_end = i + 1
+                break
+    for line in lines[fm_end:]:
+        m = BOLD_PSEUDO_RE.match(line)
+        if m:
+            norm = normalize_heading(m.group(1))
+            if target == "entrance":
+                if _matches_alias(norm, ENTRANCE_ALIASES) and not _matches_alias(norm, COMBINED_ALIASES):
+                    return True
+            elif target == "exit":
+                if _matches_alias(norm, EXIT_ALIASES) and not _matches_alias(norm, COMBINED_ALIASES):
+                    return True
+            if _matches_alias(norm, COMBINED_ALIASES):
+                return True
+    return False
+
+
 def analyze_file(path: Path) -> dict[str, object]:
     text = path.read_text(encoding="utf-8")
     extracted = extract_entry_exit(text)
@@ -334,6 +550,13 @@ def analyze_file(path: Path) -> dict[str, object]:
         for level_id in extract_level_ids_from_block(block, logical_id)
     )
 
+    has_ent = bool(extracted["entrances"])
+    has_exit = bool(extracted["exits"])
+    ent_leak = not has_ent and _check_body_has_leak(text, ENT_METHOD_RE)
+    exit_leak = not has_exit and _check_body_has_leak(text, EXIT_METHOD_RE)
+    ent_bold = _has_bold_pseudo_heading(text, "entrance")
+    exit_bold = _has_bold_pseudo_heading(text, "exit")
+
     return {
         "file": path.name,
         "logical_id": logical_id,
@@ -343,8 +566,13 @@ def analyze_file(path: Path) -> dict[str, object]:
         "exits": extracted["exits"],
         "entrance_level_ids": entrance_level_ids,
         "exit_level_ids": exit_level_ids,
-        "missing_entrance_level_ids": bool(extracted["entrances"]) and not entrance_level_ids,
-        "missing_exit_level_ids": bool(extracted["exits"]) and not exit_level_ids,
+        "missing_entrance_level_ids": has_ent and not entrance_level_ids,
+        "missing_exit_level_ids": has_exit and not exit_level_ids,
+        "confidence": extracted.get("confidence", "none"),
+        "ent_status": _determine_status(has_ent, ent_leak),
+        "exit_status": _determine_status(has_exit, exit_leak),
+        "ent_bold": ent_bold,
+        "exit_bold": exit_bold,
     }
 
 
@@ -428,7 +656,7 @@ def build_missing_descriptions_text(results: list[dict[str, object]]) -> str:
 def build_status_report_csv(results: list[dict[str, object]]) -> str:
     output = io.StringIO()
     writer = csv.writer(output, lineterminator="\n")
-    writer.writerow(["logical_id", "入口描述", "入口层级", "出口描述", "出口层级"])
+    writer.writerow(["logical_id", "入口描述", "入口层级", "出口描述", "出口层级", "入口标题", "出口标题", "入口状态", "出口状态", "置信度"])
 
     for item in results:
         has_entrance_description = bool(item["entrances"])
@@ -436,12 +664,43 @@ def build_status_report_csv(results: list[dict[str, object]]) -> str:
         has_exit_description = bool(item["exits"])
         has_exit_level_ids = bool(item["exit_level_ids"])
 
+        confidence = item.get("confidence", "none")
+        ent_status = item.get("ent_status", "")
+
+        # Title hit for CSV
+        if confidence == "high" and has_entrance_description:
+            ent_title = "Y"
+        elif item.get("ent_bold"):
+            ent_title = "Y"
+        elif ent_status == "漏网":
+            ent_title = "LEAK"
+        elif has_entrance_description:
+            ent_title = "N"
+        else:
+            ent_title = "N"
+
+        if confidence == "high" and has_exit_description:
+            exit_title = "Y"
+        elif item.get("exit_bold"):
+            exit_title = "Y"
+        elif item.get("exit_status", "") == "漏网":
+            exit_title = "LEAK"
+        elif has_exit_description:
+            exit_title = "N"
+        else:
+            exit_title = "N"
+
         writer.writerow([
             item["logical_id"],
             has_entrance_description,
             has_entrance_level_ids,
             has_exit_description,
             has_exit_level_ids,
+            ent_title,
+            exit_title,
+            ent_status,
+            item.get("exit_status", ""),
+            confidence,
         ])
 
     return output.getvalue()
@@ -458,10 +717,14 @@ def build_status_report_xlsx(results: list[dict[str, object]], output_path: Path
     center_align = Alignment(horizontal="center", vertical="center")
     green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
     red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+    yellow_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+    grey_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
     green_font = Font(color="006100", size=11)
     red_font = Font(color="9C0006", size=11)
+    yellow_font = Font(color="9C6500", size=11)
+    grey_font = Font(color="595959", size=11)
 
-    headers = ["logical_id", "入口描述", "入口层级", "出口描述", "出口层级"]
+    headers = ["logical_id", "入口描述", "入口层级", "出口描述", "出口层级", "入口标题", "出口标题", "入口状态", "出口状态", "置信度"]
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=header)
         cell.font = header_font_white
@@ -473,6 +736,34 @@ def build_status_report_xlsx(results: list[dict[str, object]], output_path: Path
         has_entrance_level_ids = bool(item["entrance_level_ids"])
         has_exit_description = bool(item["exits"])
         has_exit_level_ids = bool(item["exit_level_ids"])
+        confidence = item.get("confidence", "none")
+        confidence_map = {"high": "高", "low": "低", "none": "无"}
+
+        ent_status = item.get("ent_status", "")
+        exit_status = item.get("exit_status", "")
+
+        # Title hit: ✔=heading found, ⚠=leak, ❌=not found
+        if confidence == "high" and has_entrance_description:
+            ent_title = "✔"
+        elif item.get("ent_bold"):
+            ent_title = "✔"
+        elif ent_status == "漏网":
+            ent_title = "⚠"
+        elif has_entrance_description:
+            ent_title = "❌"
+        else:
+            ent_title = "❌"
+
+        if confidence == "high" and has_exit_description:
+            exit_title = "✔"
+        elif item.get("exit_bold"):
+            exit_title = "✔"
+        elif exit_status == "漏网":
+            exit_title = "⚠"
+        elif has_exit_description:
+            exit_title = "❌"
+        else:
+            exit_title = "❌"
 
         values = [
             item["logical_id"],
@@ -480,13 +771,48 @@ def build_status_report_xlsx(results: list[dict[str, object]], output_path: Path
             "✔ 有" if has_entrance_level_ids else "✘ 无",
             "✔ 有" if has_exit_description else "✘ 无",
             "✔ 有" if has_exit_level_ids else "✘ 无",
+            ent_title,
+            exit_title,
+            ent_status,
+            exit_status,
+            confidence_map.get(confidence, confidence),
         ]
+
+        status_fill = {"已捕获": green_fill, "漏网": yellow_fill, "确认无": grey_fill}
+        status_font = {"已捕获": green_font, "漏网": yellow_font, "确认无": grey_font}
+        title_fill2 = {"✔": green_fill, "❌": red_fill, "⚠": yellow_fill}
+        title_font2 = {"✔": green_font, "❌": red_font, "⚠": yellow_font}
 
         for col, value in enumerate(values, 1):
             cell = ws.cell(row=row_idx, column=col, value=value)
             cell.alignment = center_align
             if col == 1:
                 cell.font = Font(size=11)
+            elif col in (6, 7):
+                tf = title_fill2.get(value)
+                tfn = title_font2.get(value)
+                if tf:
+                    cell.fill = tf
+                    cell.font = tfn
+            elif col in (8, 9):
+                sf = status_fill.get(value)
+                sfn = status_font.get(value)
+                if sf:
+                    cell.fill = sf
+                    cell.font = sfn
+                else:
+                    cell.fill = grey_fill
+                    cell.font = grey_font
+            elif col == 10:
+                if value == "高":
+                    cell.fill = green_fill
+                    cell.font = green_font
+                elif value == "低":
+                    cell.fill = yellow_fill
+                    cell.font = yellow_font
+                else:
+                    cell.fill = grey_fill
+                    cell.font = grey_font
             elif "✔" in str(value):
                 cell.fill = green_fill
                 cell.font = green_font
@@ -494,11 +820,11 @@ def build_status_report_xlsx(results: list[dict[str, object]], output_path: Path
                 cell.fill = red_fill
                 cell.font = red_font
 
-    col_widths = [24, 12, 12, 12, 12]
+    col_widths = [24, 12, 12, 12, 12, 12, 12, 12, 12, 10]
     for col, width in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(col)].width = width
 
-    ws.auto_filter.ref = f"A1:E{len(results) + 1}"
+    ws.auto_filter.ref = f"A1:J{len(results) + 1}"
     ws.freeze_panes = "A2"
 
     # ----- Sheet 2: 统计分析 -----
@@ -511,6 +837,9 @@ def build_status_report_xlsx(results: list[dict[str, object]], output_path: Path
     exit_desc_id = sum(1 for r in results if r["exits"] and r["exit_level_ids"])
     both_desc = sum(1 for r in results if r["entrances"] and r["exits"])
     both_desc_id = sum(1 for r in results if r["entrances"] and r["entrance_level_ids"] and r["exits"] and r["exit_level_ids"])
+    high_count = sum(1 for r in results if r.get("confidence") == "high")
+    low_count = sum(1 for r in results if r.get("confidence") == "low")
+    none_count = sum(1 for r in results if r.get("confidence") == "none")
 
     stats = [
         ("总文章数", total, ""),
@@ -522,6 +851,11 @@ def build_status_report_xlsx(results: list[dict[str, object]], output_path: Path
         ("出口描述文本 + 层级ID", exit_desc_id, f"{exit_desc_id/total*100:.1f}%"),
         ("入口 + 出口描述文本", both_desc, f"{both_desc/total*100:.1f}%"),
         ("入口 + 出口描述文本 + 双ID", both_desc_id, f"{both_desc_id/total*100:.1f}%"),
+        ("", "", ""),
+        ("置信度分布", "数量", "占比"),
+        ("高（标题命中）", high_count, f"{high_count/total*100:.1f}%"),
+        ("低（正文推断）", low_count, f"{low_count/total*100:.1f}%"),
+        ("无（未命中）", none_count, f"{none_count/total*100:.1f}%"),
     ]
 
     title_font = Font(bold=True, size=14, color="4472C4")
@@ -539,7 +873,7 @@ def build_status_report_xlsx(results: list[dict[str, object]], output_path: Path
         cell_b = ws2.cell(row=row_idx, column=2, value=count if count != "" else "")
         cell_c = ws2.cell(row=row_idx, column=3, value=rate)
 
-        if label == "指标":
+        if label == "指标" or label == "置信度分布":
             for c in [cell_a, cell_b, cell_c]:
                 c.font = header_font_white2
                 c.fill = header_fill2
@@ -560,6 +894,69 @@ def build_status_report_xlsx(results: list[dict[str, object]], output_path: Path
     ws2.column_dimensions["A"].width = 34
     ws2.column_dimensions["B"].width = 12
     ws2.column_dimensions["C"].width = 12
+
+    # ----- Sheet 3: 排除确认无的命中率 -----
+    ws3 = wb.create_sheet("有效命中率")
+
+    ent_none_count = sum(1 for r in results if r.get("ent_status") == "确认无")
+    exit_none_count = sum(1 for r in results if r.get("exit_status") == "确认无")
+    both_none_count = sum(1 for r in results if r.get("ent_status") == "确认无" and r.get("exit_status") == "确认无")
+
+    ent_adj = total - ent_none_count
+    exit_adj = total - exit_none_count
+    both_adj = total - both_none_count
+
+    adj_stats = [
+        ("调整依据", "", ""),
+        ("确认无入口的层级数", ent_none_count, "已从入口统计中排除"),
+        ("确认无出口的层级数", exit_none_count, "已从出口统计中排除"),
+        ("确认双无的层级数", both_none_count, "已从双统计中排除"),
+        ("", "", ""),
+        ("指标（排除确认无后）", "命中数", "调整后成功率"),
+        ("入口描述文本", ent_desc, f"{ent_desc/ent_adj*100:.1f}%"),
+        ("入口描述文本 + 层级ID", ent_desc_id, f"{ent_desc_id/ent_adj*100:.1f}%"),
+        ("出口描述文本", exit_desc, f"{exit_desc/exit_adj*100:.1f}%"),
+        ("出口描述文本 + 层级ID", exit_desc_id, f"{exit_desc_id/exit_adj*100:.1f}%"),
+        ("入口 + 出口描述文本", both_desc, f"{both_desc/both_adj*100:.1f}%"),
+        ("入口 + 出口描述文本 + 双ID", both_desc_id, f"{both_desc_id/both_adj*100:.1f}%"),
+        ("", "", ""),
+        ("对照：原始命中率", "", ""),
+        ("入口描述文本（原始）", ent_desc, f"{ent_desc/total*100:.1f}%"),
+        ("出口描述文本（原始）", exit_desc, f"{exit_desc/total*100:.1f}%"),
+        ("入口+出口描述（原始）", both_desc, f"{both_desc/total*100:.1f}%"),
+    ]
+
+    ws3.merge_cells("A1:C1")
+    ws3.cell(row=1, column=1, value="有效命中率（排除确认无出入口的层级）").font = title_font
+
+    for row_idx, (label, count, rate) in enumerate(adj_stats, 2):
+        cell_a = ws3.cell(row=row_idx, column=1, value=label)
+        cell_b = ws3.cell(row=row_idx, column=2, value=count if count != "" else "")
+        cell_c = ws3.cell(row=row_idx, column=3, value=rate)
+
+        if label in ("调整依据", "指标（排除确认无后）", "对照：原始命中率"):
+            for c in [cell_a, cell_b, cell_c]:
+                c.font = header_font_white2
+                c.fill = header_fill2
+                c.alignment = center_align
+        elif label and not label.startswith("确认"):
+            cell_a.alignment = Alignment(horizontal="right")
+            cell_b.alignment = center_align
+            cell_c.alignment = center_align
+
+            pct_str = rate.strip("%")
+            if pct_str:
+                pct = float(pct_str)
+                if pct >= 90:
+                    cell_c.font = percent_font_green
+                elif pct >= 70:
+                    cell_c.font = percent_font_yellow
+                else:
+                    cell_c.font = percent_font_red
+
+    ws3.column_dimensions["A"].width = 38
+    ws3.column_dimensions["B"].width = 14
+    ws3.column_dimensions["C"].width = 18
 
     wb.save(output_path)
 
@@ -607,7 +1004,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    files = sorted(args.input_dir.glob(args.pattern))
+    files = sorted(args.input_dir.glob(args.pattern), key=_natural_sort_key)
     if args.limit is not None:
         files = files[: args.limit]
 
