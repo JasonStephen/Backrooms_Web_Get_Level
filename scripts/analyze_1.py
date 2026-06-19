@@ -28,265 +28,35 @@ PLAIN_LEVEL_RE = re.compile(r"(?<![A-Za-z0-9])[Ll]evel\s*(-?\d+(?:\.\d+)*)")
 SLUG_LEVEL_RE = re.compile(r"(?<![A-Za-z0-9])level-\d+(?:-\d+)*", re.IGNORECASE)
 PATH_LEVEL_RE = re.compile(r"(?:^|/)(?:trimmed:|latest:)?(level-\d+(?:-\d+)*)$", re.IGNORECASE)
 
-ENTRANCE_ALIASES = {
-    "入口",
-    "入囗",  # variant character
-    "如何进入",
-    "进入方式",
-    "进入方法",
-    "进入途径",
-    "已记录入口",
-    "记录入口",
-    "如何抵达",
-    "抵达方式",
-    "进入",
-    "通行",
-}
+KW_PATH = ROOT / "config" / "kw.json"
 
-EXIT_ALIASES = {
-    "出口",
-    "出囗",  # variant character
-    "如何离开",
-    "离开方式",
-    "离开方法",
-    "离开途径",
-    "已记录出口",
-    "记录出口",
-    "离开",
-    "撤离",
-    "撤离点",
-    "逃生",
-    "逃生地点",
-    "逃脱",
-    "逃离",
-    "出路",
-    "退路",
-    "返回",
-    "通行",
-}
+def _load_keywords():
+    k = json.loads(KW_PATH.read_text(encoding="utf-8"))
+    kw = k["plan1"]
+    kw["entrance_aliases"] = k["entrance_aliases"]
+    kw["exit_aliases"] = k["exit_aliases"]
+    kw["combined_aliases"] = k["combined_aliases"]
+    g = globals()
+    g["ENTRANCE_ALIASES"] = set(kw["entrance_aliases"])
+    g["EXIT_ALIASES"] = set(kw["exit_aliases"])
+    g["COMBINED_ALIASES"] = set(kw["combined_aliases"])
+    g["CORE_ENTRANCE_ALIAS"] = kw["core_entrance_alias"]
+    g["CORE_EXIT_ALIAS"] = kw["core_exit_alias"]
+    g["CORE_COMBINED_ALIASES"] = set(kw["core_combined_aliases"])
+    g["ENTRY_EXIT_SIGNAL_RE"] = __import__("re").compile(kw["entry_exit_signal_re"])
+    g["ENT_METHOD_RE"] = __import__("re").compile(kw["ent_method_re"])
+    g["EXIT_METHOD_RE"] = __import__("re").compile(kw["exit_method_re"])
+    g["LEAK_NEGATIVE_RE"] = __import__("re").compile(kw["leak_negative_re"])
+    g["ENT_KEY"] = __import__("re").compile(kw["ent_key"])
+    g["BOLD_PSEUDO_RE"] = __import__("re").compile(kw["bold_pseudo_re"])
+    g["INLINE_HEADING_RE"] = __import__("re").compile(kw["inline_heading_re"])
+    g["SENTENCE_SPLIT_RE"] = __import__("re").compile(kw["sentence_split_re"])
+    g["NON_EE_HEADING_KEYWORDS"] = set(kw["non_ee_heading_keywords"])
+    g["ENTRANCE_KEYWORDS"] = tuple(kw["entrance_keywords"])
+    g["EXIT_KEYWORDS"] = tuple(kw["exit_keywords"])
+    g["NARRATIVE_EXIT_PATTERNS"] = tuple(kw["narrative_exit_patterns"])
 
-COMBINED_ALIASES = {
-    "入口与出口",
-    "入口和出口",
-    "出入口",
-    "入口出口",
-    "入囗与出囗",  # variant character
-    "已记录入口与出口",
-    "已记录入口和出口",
-    "记录入口与出口",
-    "记录入口和出口",
-    "出入端口",
-    "通行",
-    "进路与出路",
-    "入口及撤离点",
-    "入口和逃生地点",
-    "入口与撤离",
-}
-
-CORE_ENTRANCE_ALIAS = "入口"
-CORE_EXIT_ALIAS = "出口"
-CORE_COMBINED_ALIASES = {"入口与出口", "入口和出口", "出入口", "入口出口"}
-
-ENTRY_EXIT_SIGNAL_RE = re.compile(r"(入口|出口|进入|离开|逃离|切出|返回|回到|通往|通过|经由|穿过)")
-
-ENT_METHOD_RE = re.compile(r"(进入.*(?:方法|方式|Level|层级)|入口.*(?:位于|在)|可通过(?:.*进入|.*抵达)|可以从(?:.*进入|.*抵达)|经由.*进入|进入.*Level)")
-EXIT_METHOD_RE = re.compile(r"(离开.*(?:方法|方式|Level|层级|此地|此处)|出口.*(?:位于|在)|可通过.*离开|可以从.*离开|通往.*Level|切出.*到|返回.*到|穿过.*门|通向.*层级)")
-
-LEAK_NEGATIVE_RE = re.compile(r"(不得而知|无从知晓|没有.*出口|未.*发现.*出口|没有提到出口|不知道.*如何|不明确|未知|尚不可知|从未.*发现|没有记录|无.*记录|从未|未曾|尚无|没有已知|不.*清楚|无法.*(?:离开|进入|找到))")
-
-ENT_KEY = re.compile(r"(入口|出口|进入|离开|逃离|切出|切入|返回|通往|通行|抵达|转移|穿越)")
-
-BOLD_PSEUDO_RE = re.compile(r"^\s*\*\*(.+?)\*\*\s*$")
-
-INLINE_HEADING_RE = re.compile(r"(?<!\n)(#{1,4})\s+([^\n]{1,80}?)(?=\s*$|(?=\s*[-*]))")  # mid-line headings
-
-SENTENCE_SPLIT_RE = re.compile(r"[。！？；\n]")
-
-NON_EE_HEADING_KEYWORDS = {"作者", "授权", "脚注", "来源", "图源", "译者", "翻译", "版权", "协议", "附件", "附录", "投票", "评论"}
-
-NARRATIVE_EXIT_PATTERNS = (
-    r"离开了房间",
-    r"离开了这里",
-    r"离开家",
-    r"再也没有.*离开",
-    r"别.*离开",
-    r"不要.*离开",
-    r"未曾.*离开",
-    r"从来没有离开过",
-    r"不会.*离开",
-    r"离开了柜台",
-    r"我爱你",
-    r"答应我",
-    r"一个吻",
-    r"两颗心",
-    r"喘息着说道",
-)
-
-ENTRANCE_KEYWORDS = (
-    "进入",
-    "进入到",
-    "抵达",
-    "通往本层级",
-    "进入本层级",
-    "入口",
-    "可经由",
-    "可以从",
-    "通过",
-)
-
-EXIT_KEYWORDS = (
-    "离开",
-    "逃离",
-    "出去",
-    "通往",
-    "出口",
-    "返回",
-    "回到",
-    "切出",
-    "原路返回",
-)
-
-
-@dataclass
-class Section:
-    title: str
-    level: int
-    lines: list[str] = field(default_factory=list)
-    children: list["Section"] = field(default_factory=list)
-
-
-def strip_front_matter(text: str) -> str:
-    lines = text.splitlines()
-    if len(lines) >= 3 and lines[0].strip() == "---":
-        for index in range(1, len(lines)):
-            if lines[index].strip() == "---":
-                return "\n".join(lines[index + 1 :])
-    return text
-
-
-def normalize_heading(text: str) -> str:
-    text = LINK_RE.sub(r"\1", text)
-    text = EMPHASIS_RE.sub("", text)
-    text = text.strip()
-    text = PUNCT_RE.sub("", text)
-    text = text.replace("和", "与")
-    return text
-
-
-def parse_markdown_sections(text: str) -> Section:
-    root = Section(title="", level=0)
-    stack: list[Section] = [root]
-
-    for raw_line in strip_front_matter(text).splitlines():
-        line = raw_line.rstrip()
-        heading_match = HEADING_RE.match(line)
-        if heading_match:
-            hashes, title = heading_match.groups()
-            level = len(hashes)
-            section = Section(title=title.strip(), level=level)
-            while stack and stack[-1].level >= level:
-                stack.pop()
-            stack[-1].children.append(section)
-            stack.append(section)
-            continue
-
-        stack[-1].lines.append(line)
-
-    return root
-
-
-def collect_text_lines(section: Section) -> list[str]:
-    lines = list(section.lines)
-    for child in section.children:
-        lines.extend(collect_text_lines(child))
-    return lines
-
-
-def clean_block(block: str) -> str:
-    block = IMAGE_RE.sub(r"\1", block)
-    block = LINK_RE.sub(r"\1", block)
-    block = EMPHASIS_RE.sub("", block)
-    block = re.sub(r"\s+", " ", block).strip()
-    return block
-
-
-def split_blocks(lines: Iterable[str]) -> list[str]:
-    blocks: list[str] = []
-    buffer: list[str] = []
-
-    def flush() -> None:
-        if not buffer:
-            return
-        text = clean_block(" ".join(buffer))
-        if text:
-            blocks.append(text)
-        buffer.clear()
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            flush()
-            continue
-
-        if stripped.startswith(("-", "*")) or re.match(r"^\d+\.", stripped):
-            flush()
-            text = clean_block(re.sub(r"^(-|\*|\d+\.)\s*", "", stripped))
-            if text:
-                blocks.append(text)
-            continue
-
-        buffer.append(stripped)
-
-    flush()
-    return blocks
-
-
-def classify_block(block: str) -> str | None:
-    if not ENTRY_EXIT_SIGNAL_RE.search(block):
-        return None
-
-    entrance_score = sum(keyword in block for keyword in ENTRANCE_KEYWORDS)
-    exit_score = sum(keyword in block for keyword in EXIT_KEYWORDS)
-
-    if "离开" in block or "逃离" in block or "原路返回" in block:
-        exit_score += 2
-    if "进入" in block and "离开" not in block and "逃离" not in block:
-        entrance_score += 1
-
-    if entrance_score == 0 and exit_score == 0:
-        return None
-    if entrance_score > exit_score:
-        return "entrances"
-    if exit_score > entrance_score:
-        return "exits"
-
-    if "进入" in block and "离开" not in block:
-        return "entrances"
-    if "离开" in block and "进入" not in block:
-        return "exits"
-    return None
-
-
-def find_sections(section: Section, normalized_titles: set[str]) -> list[Section]:
-    matches: list[Section] = []
-    for child in section.children:
-        norm = normalize_heading(child.title)
-        if norm in normalized_titles:
-            matches.append(child)
-        elif any(alias in norm for alias in normalized_titles):
-            matches.append(child)
-        matches.extend(find_sections(child, normalized_titles))
-    return matches
-
-
-def unique_blocks(blocks: Iterable[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for block in blocks:
-        if block and block not in seen:
-            seen.add(block)
-            result.append(block)
-    return result
+_load_keywords()
 
 
 def _matches_alias(norm: str, aliases: set[str]) -> bool:

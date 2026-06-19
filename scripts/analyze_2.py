@@ -23,35 +23,27 @@ AUTHOR_SECTION_RE = re.compile(
     re.MULTILINE,
 )
 
-ENTRANCE_ALIASES = {
-    "入口", "入囗", "如何进入", "进入方式", "进入方法", "进入途径",
-    "已记录入口", "记录入口", "如何抵达", "抵达方式", "进入", "通行",
-}
-EXIT_ALIASES = {
-    "出口", "出囗", "如何离开", "离开方式", "离开方法", "离开途径",
-    "已记录出口", "记录出口", "离开", "撤离", "撤离点", "逃生", "逃生地点",
-    "逃脱", "逃离", "出路", "退路", "返回", "通行",
-}
-COMBINED_ALIASES = {
-    "入口与出口", "入口和出口", "出入口", "入口出口", "入囗与出囗",
-    "已记录入口与出口", "已记录入口和出口", "记录入口与出口", "记录入口和出口",
-    "出入端口", "通行", "进路与出路", "入口及撤离点", "入口和逃生地点", "入口与撤离",
-}
+KW_PATH = ROOT / "config" / "kw.json"
 
-ENTRANCE_VERBS = {
-    "从", "经由", "来自", "通过.*进入", "入口位于", "进入本层级",
-    "来到本层级", "到达本层级", "跌入", "切入.*到", "进入.*本层",
-    "进入此层级", "来到此层级", "落到", "掉入",
-}
-EXIT_VERBS = {
-    "通往", "通向", "到达", "进入", "回到", "返回", "切出", "离开.*到",
-    "离去.*到", "出去.*到", "可前往", "可以前往", "能到达", "可以到达",
-}
-IRRELEVANT_VERBS = {
-    "类似", "也有", "与.*不同", "参见", "详见", "位于", "描述",
-    "发现", "记录", "报告", "照片", "图片",
-}
+def _load_plan2_keywords():
+    k = json.loads(KW_PATH.read_text(encoding="utf-8"))
+    kw = k["plan2"]
+    kw["entrance_aliases"] = k["entrance_aliases"]
+    kw["exit_aliases"] = k["exit_aliases"]
+    kw["combined_aliases"] = k["combined_aliases"]
+    g = globals()
+    g["ENTRANCE_ALIASES"] = set(kw["entrance_aliases"])
+    g["EXIT_ALIASES"] = set(kw["exit_aliases"])
+    g["COMBINED_ALIASES"] = set(kw["combined_aliases"])
+    g["ENTRANCE_VERBS"] = set(kw["entrance_verbs"])
+    g["EXIT_VERBS"] = set(kw["exit_verbs"])
+    g["IRRELEVANT_VERBS"] = set(kw["irrelevant_verbs"])
+    g["HEADING_RE"] = re.compile(kw["heading_re"], re.MULTILINE)
+    g["SLUG_LEVEL_RE"] = re.compile(kw["slug_level_re"], re.IGNORECASE)
+    g["PLAIN_LEVEL_RE"] = re.compile(kw["plain_level_re"])
+    g["AUTHOR_SECTION_RE"] = re.compile(kw["author_section_re"], re.MULTILINE)
 
+_load_plan2_keywords()
 
 def strip_front_matter(text: str) -> str:
     lines = text.splitlines()
