@@ -16,7 +16,7 @@ from openpyxl.utils import get_column_letter
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_INPUT_DIR = ROOT / "outputs" / "md"
-DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "entry_exit"
+DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "entry_exit_1"
 
 HEADING_RE = re.compile(r"^(#{1,6})\s*(.+?)\s*$")
 LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
