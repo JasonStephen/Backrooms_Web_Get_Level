@@ -436,9 +436,73 @@ def build_xlsx_output(results: list[dict], output_path: Path) -> None:
     wb.save(output_path)
 
 
+def _short_reason(reason: str) -> str:
+    m = {
+        "在入口标题区间": "入口标题",
+        "在出口标题区间": "出口标题",
+        "组合段内无法判定": "组合段",
+    }
+    if reason in m:
+        return m[reason]
+    return reason.replace("组合段内方向动词判断(", "组合段(").replace("句子级方向动词判断(", "方向词(").replace("微量方向词(偏向入口)", "弱信号").replace("含方向词但无关词更多", "无关占优").replace("无关动词占优", "无关词").replace("无方向词", "无关")[:12]
+
+
+def build_summary_json(results: list[dict]) -> dict:
+    records = []
+    for r in results:
+        ent_set: dict[str, str] = {}
+        exit_set: dict[str, str] = {}
+        irr_set: dict[str, str] = {}
+        for e in r["edges"]:
+            target = e["target"]
+            reason = _short_reason(e["reason"])
+            if e["direction"] == "entrance":
+                if target not in ent_set:
+                    ent_set[target] = reason
+            elif e["direction"] == "exit":
+                if target not in exit_set:
+                    exit_set[target] = reason
+            else:
+                if target not in irr_set:
+                    irr_set[target] = reason
+        records.append({
+            "source": r["logical_id"],
+            "source_url": f"https://backrooms-wiki-cn.wikidot.com/{r['logical_id']}",
+            "entrances": [f"{t} ({r})" for t, r in ent_set.items()],
+            "exits": [f"{t} ({r})" for t, r in exit_set.items()],
+            "irrelevant": [f"{t} ({r})" for t, r in irr_set.items()],
+        })
+    return {"file_count": len(results), "records": records}
+
+
+def build_clean_summary_json(results: list[dict]) -> dict:
+    """Summary without reason strings — just clean level ID lists."""
+    records = []
+    for r in results:
+        ent_set = set()
+        exit_set = set()
+        irr_set = set()
+        for e in r["edges"]:
+            if e["direction"] == "entrance":
+                ent_set.add(e["target"])
+            elif e["direction"] == "exit":
+                exit_set.add(e["target"])
+            else:
+                irr_set.add(e["target"])
+        records.append({
+            "source": r["logical_id"],
+            "entrances": sorted(ent_set),
+            "exits": sorted(exit_set),
+            "irrelevant": sorted(irr_set),
+        })
+    return {"file_count": len(results), "records": records}
+
+
 def write_outputs(results: list[dict], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "level_references.json"
+    summary_path = output_dir / "level_summary.json"
+    clean_path = output_dir / "level_summary_clean.json"
     csv_path = output_dir / "level_references.csv"
     xlsx_path = output_dir / "level_references.xlsx"
 
@@ -446,12 +510,22 @@ def write_outputs(results: list[dict], output_dir: Path) -> None:
         json.dumps(build_json_output(results), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    summary_path.write_text(
+        json.dumps(build_summary_json(results), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    clean_path.write_text(
+        json.dumps(build_clean_summary_json(results), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     csv_path.write_text(build_csv_output(results), encoding="utf-8")
     build_xlsx_output(results, xlsx_path)
 
-    print(f"Wrote JSON to {json_path}")
-    print(f"Wrote CSV  to {csv_path}")
-    print(f"Wrote XLSX to {xlsx_path}")
+    print(f"Wrote JSON       to {json_path}")
+    print(f"Wrote Summary    to {summary_path}")
+    print(f"Wrote Clean      to {clean_path}")
+    print(f"Wrote CSV        to {csv_path}")
+    print(f"Wrote XLSX       to {xlsx_path}")
 
 
 def parse_args() -> argparse.Namespace:
