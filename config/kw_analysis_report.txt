@@ -1,0 +1,178 @@
+============================================================
+A1: Uncovered heading variants
+============================================================
+Total uncovered: 71
+  [  3] 出口与入口  (sources: level-129, level-284, level-825)
+  [  1] 这是一则向所有流浪者与MEG专员发布的通告在2021年8月10日之后只有身穿强效防护服、且已得到监督者许可之人才能进入尸湖禁区我们已在禁区的外围设置了铁丝网围栏以及警示标识在未穿着高质量辐射防护服的情况下跨越边界将导致必然的死亡  (sources: level-10-1)
+  [  1] 请注意麦芽镇地区周围检测到了罕见的强风并伴随有强烈的辐射这些辐射粒子据推测来源于Level101即距麦芽镇约20英里（40千米）远的尸湖这些辐射粒子极为危险任何人类或是动物一旦接触哪怕一粒粒子也会立即受到致命的辐射影响麦芽镇的所有居民现在应尽快撤离并前往BNTG10级资源站暂住该辐射现象持续的时间难以预测因此请居民们做好长期移居的准备带上所有珍贵的家当不要浪费时间这是生死危急的时刻各位保重  (sources: level-10-1)
+  [  1] 入口出口与通路  (sources: level-11-2)
+  [  1] —入口与出口—  (sources: level-11-3)
+  [  1] 显示入口  (sources: level-11)
+  [  1] 显示出口  (sources: level-11)
+  [  1] 频繁出现的核爆震源入口  (sources: level-174)
+  [  1] 非频繁出现的核爆震源入口  (sources: level-174)
+  [  1] 非核爆震源处入口  (sources: level-174)
+  [  1] 入口区块  (sources: level-182)
+  [  1] 展示Level2入口  (sources: level-2)
+  [  1] 展示异常门径处离开方法  (sources: level-2)
+  [  1] 展示其他离开途径  (sources: level-2)
+  [  1] 进入与离开层级  (sources: level-204-1)
+  [  1] 显示Level208的入口  (sources: level-208)
+  [  1] 显示Level208的出口  (sources: level-208)
+  [  1] “出口”门的发现  (sources: level-21)
+  [  1] 在继续阅读时请记下入口及出口  (sources: level-219)
+  [  1] 出口异常  (sources: level-239)
+  [  1] 你目前正在阅读一篇由名为aether48的人在wikidotcom上撰写的虚构作品如果你容易出现遗忘或怀疑该事实的情况请立即离开该页面  (sources: level-269)
+  [  1] 从LevelΔ的入口  (sources: level-272)
+  [  1] 出口路线  (sources: level-273)
+  [  1] 入口与出口L  (sources: level-281)
+  [  1] 进入&离开  (sources: level-300)
+  [  1] 无物可逃脱死亡之终局  (sources: level-308)
+  [  1] 进入shufflesquadorg  (sources: level-317)
+  [  1] 进入后35小时  (sources: level-322)
+  [  1] 进入后512小时  (sources: level-322)
+  [  1] 进入后1236小时  (sources: level-322)
+  [  1] 进入36小时或更久  (sources: level-322)
+  [  1] 我不想离开  (sources: level-337)
+  [  1] 通用入口  (sources: level-36)
+  [  1] 以任何方式进入Level360的行为  (sources: level-360)
+  [  1] 已记录的入口与出口  (sources: level-360)
+  [  1] 其他入口  (sources: level-360)
+  [  1] 其他出口  (sources: level-360)
+  [  1] 入口与逃生地点  (sources: level-48-1)
+  [  1] 逃脱位点  (sources: level-486)
+  [  1] 【🍊】入口  (sources: level-57)
+  [  1] 【🍎】出口  (sources: level-57)
+  [  1] 展示“在Level6入口外留下的纸条”  (sources: level-6)
+  [  1] Level607“限制通行”  (sources: level-607)
+  [  1] 荒漠的入口与出口  (sources: level-628)
+  [  1] 汪洋的入口与出口  (sources: level-628)
+  [  1] 小岛的入口与出口  (sources: level-628)
+  [  1] 返回基地  (sources: level-64)
+  [  1] 逃离难度——C  (sources: level-667)
+  [  1] 逃离难度——E  (sources: level-667)
+  [  1] 逃离难度——D  (sources: level-667)
+
+============================================================
+A2: Directional phrases near level refs (leak & none files)
+============================================================
+Files to scan: 76
+
+Entrance-like phrases: 58
+  [  1] ，均从N.T.G. [NEW]
+  [  1] 我从记事起就生活在[ [NEW]
+  [  1] 施时进入是有害的 [NEW]
+  [  1] 不得进入 [NEW]
+  [  1] 过程从未被观测到，但* [NEW]
+  [  1] 界，从一个非黑即白的世 [NEW]
+  [  1] 界，进入了一个充满灰色地 [NEW]
+  [  1] 候，进入Level4 [NEW]
+  [  1] 之间来到现实的某处角落 [NEW]
+  [  1] 中可进入的安全检查点 [NEW]
+  [  1] ，可通过多种门道进入 [NEW]
+  [  1] 门道进入 [NEW]
+  [  1] 现在进入时的同一位置 [NEW]
+  [  1] 前还从没进过[边境森林 [NEW]
+  [  1] 们是从[Level7 [NEW]
+  [  1] 在你离开之后从没给你写信 [NEW]
+  [  1] 之后从没给你写信，还找 [NEW]
+  [  1] 你来到[画廊](/le [NEW]
+  [  1] 进入此处的唯一方式， [NEW]
+  [  1] ，是从[Level [NEW]
+  [  1] 如何进入Level7 [NEW]
+  [  1] 我抵达Level80 [NEW]
+  [  1] 可以进入[赌场](/le [NEW]
+  [  1] 比起从这里离开，我更有 [NEW]
+  [  1] 志和进入Level82 [NEW]
+  [  1] )从灯的熄灭可以看出 [NEW]
+  [  1] 体被通过失败的半频繁的流 [NEW]
+  [  1] )从[Level1 [NEW]
+  [  1] 2可通过选择建筑进入，否 [NEW]
+  [  1] 建筑进入，否则将处于怪异 [NEW]
+
+Exit-like phrases: 17
+  [  2] 重新回到Level82 [NEW]
+  [  1] 们也回到了基地 [NEW]
+  [  1] 机会回到Level11 [NEW]
+  [  1] 离开Level4 [NEW]
+  [  1] 了[离开海波利亚的一个出 [NEW]
+  [  1] 务是回到Level29 [NEW]
+  [  1] 许该回到Level11 [NEW]
+  [  1] 里，回到了Level1 [NEW]
+  [  1] 这里离开，我更有可能去赢 [NEW]
+  [  1] 快速返回自己的驻地，它们 [NEW]
+  [  1] 快速返回自己的駐地，它們 [NEW]
+  [  1] 靠的切出方式是带着离开的 [NEW]
+  [  1] 带着离开的意愿，将自身浸 [NEW]
+  [  1] 活着出去讲述他们的故事， [NEW]
+  [  1] 且会返回Level97 [NEW]
+  [  1] 作为离开Level9 [NEW]
+  [  1] 送我回到了Level [NEW]
+
+============================================================
+B2: Top direction disagreements (plan1 vs plan2)
+============================================================
+
+p1=ent p2=exit: 377 edges
+  [ 1] level-0-1->level-1
+  [ 1] level-0-1->level-0
+  [ 1] level-1->level-4-2
+  [ 1] level-1->level-141
+  [ 1] level-1->level-128
+  [ 1] level-1->level-1-2
+  [ 1] level-1->level-84
+  [ 1] level-1->level-0
+  [ 1] level-1->level-2
+  [ 1] level-1->level-11
+  [ 1] level-1->level-0-1
+  [ 1] level-1->level-1-5
+  [ 1] level-1->level-58
+  [ 1] level-1->level-1-1
+  [ 1] level-1-1->level-1
+  [ 1] level-10->level-11
+  [ 1] level-10-2->level-10
+  [ 1] level-108->level-116
+  [ 1] level-108->level-249
+  [ 1] level-108->level-415
+  [ 1] level-108->level-32
+  [ 1] level-11->level-370
+  [ 1] level-11->level-141
+  [ 1] level-11->level-563
+  [ 1] level-11->level-6-1
+  [ 1] level-11->level-172
+  [ 1] level-11->level-222
+  [ 1] level-11->level-812
+  [ 1] level-11->level-67
+  [ 1] level-11->level-678
+
+p1=exit p2=ent: 232 edges
+  [ 1] level-0-1->level-0
+  [ 1] level-0-2->level-0
+  [ 1] level-1-1->level-1
+  [ 1] level-10->level-11
+  [ 1] level-10-2->level-10
+  [ 1] level-108->level-116
+  [ 1] level-108->level-77
+  [ 1] level-11->level-458
+  [ 1] level-11-2->level-189
+  [ 1] level-11-2->level-283
+  [ 1] level-11-2->level-11
+  [ 1] level-11-2->level-155
+  [ 1] level-11-2->level-852
+  [ 1] level-11-3->level-11
+  [ 1] level-110->level-78
+  [ 1] level-111->level-52
+  [ 1] level-120->level-4-3
+  [ 1] level-122->level-480
+  [ 1] level-125->level-121
+  [ 1] level-127->level-4
+  [ 1] level-128->level-19
+  [ 1] level-129->level-11-1
+  [ 1] level-129->level-130
+  [ 1] level-141->level-2
+  [ 1] level-141->level-11
+  [ 1] level-141->level-5
+  [ 1] level-143->level-10
+  [ 1] level-146->level-129
+  [ 1] level-148->level-365
+  [ 1] level-150->level-10

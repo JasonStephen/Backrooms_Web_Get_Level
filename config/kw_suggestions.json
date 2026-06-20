@@ -1,0 +1,211 @@
+{
+  "add_entrance_aliases": [
+    {
+      "value": "显示入口",
+      "count": 1,
+      "sources": [
+        "level-11"
+      ]
+    },
+    {
+      "value": "频繁出现的核爆震源入口",
+      "count": 1,
+      "sources": [
+        "level-174"
+      ]
+    },
+    {
+      "value": "非频繁出现的核爆震源入口",
+      "count": 1,
+      "sources": [
+        "level-174"
+      ]
+    },
+    {
+      "value": "非核爆震源处入口",
+      "count": 1,
+      "sources": [
+        "level-174"
+      ]
+    },
+    {
+      "value": "入口区块",
+      "count": 1,
+      "sources": [
+        "level-182"
+      ]
+    },
+    {
+      "value": "展示Level2入口",
+      "count": 1,
+      "sources": [
+        "level-2"
+      ]
+    },
+    {
+      "value": "显示Level208的入口",
+      "count": 1,
+      "sources": [
+        "level-208"
+      ]
+    },
+    {
+      "value": "从LevelΔ的入口",
+      "count": 1,
+      "sources": [
+        "level-272"
+      ]
+    }
+  ],
+  "add_exit_aliases": [
+    {
+      "value": "显示出口",
+      "count": 1,
+      "sources": [
+        "level-11"
+      ]
+    },
+    {
+      "value": "显示Level208的出口",
+      "count": 1,
+      "sources": [
+        "level-208"
+      ]
+    },
+    {
+      "value": "“出口”门的发现",
+      "count": 1,
+      "sources": [
+        "level-21"
+      ]
+    },
+    {
+      "value": "出口异常",
+      "count": 1,
+      "sources": [
+        "level-239"
+      ]
+    },
+    {
+      "value": "出口路线",
+      "count": 1,
+      "sources": [
+        "level-273"
+      ]
+    }
+  ],
+  "add_combined_aliases": [
+    {
+      "value": "出口与入口",
+      "count": 3,
+      "sources": [
+        "level-284",
+        "level-825",
+        "level-129"
+      ]
+    },
+    {
+      "value": "入口出口与通路",
+      "count": 1,
+      "sources": [
+        "level-11-2"
+      ]
+    },
+    {
+      "value": "—入口与出口—",
+      "count": 1,
+      "sources": [
+        "level-11-3"
+      ]
+    },
+    {
+      "value": "在继续阅读时请记下入口及出口",
+      "count": 1,
+      "sources": [
+        "level-219"
+      ]
+    },
+    {
+      "value": "入口与出口L",
+      "count": 1,
+      "sources": [
+        "level-281"
+      ]
+    }
+  ],
+  "add_entrance_verbs_or_keywords": [],
+  "add_exit_verbs_or_keywords": [
+    {
+      "value": "重新回到Level82",
+      "count": 2
+    }
+  ],
+  "direction_flip_examples": [
+    [
+      "level-0-1->level-1",
+      1
+    ],
+    [
+      "level-0-1->level-0",
+      1
+    ],
+    [
+      "level-1->level-4-2",
+      1
+    ],
+    [
+      "level-1->level-141",
+      1
+    ],
+    [
+      "level-1->level-128",
+      1
+    ],
+    [
+      "level-1->level-1-2",
+      1
+    ],
+    [
+      "level-1->level-84",
+      1
+    ],
+    [
+      "level-1->level-0",
+      1
+    ],
+    [
+      "level-1->level-2",
+      1
+    ],
+    [
+      "level-1->level-11",
+      1
+    ],
+    [
+      "level-1->level-0-1",
+      1
+    ],
+    [
+      "level-1->level-1-5",
+      1
+    ],
+    [
+      "level-1->level-58",
+      1
+    ],
+    [
+      "level-1->level-1-1",
+      1
+    ],
+    [
+      "level-1-1->level-1",
+      1
+    ]
+  ],
+  "ambiguity_notes": [
+    {
+      "word": "进入",
+      "issue": "在 plan2 EXIT_VERBS 中（'进入Level X'=出口），但 '进入方法'=入口。方向标反 609 条边的首要根因。建议从 EXIT_VERBS 移除，改为按宾语判断。"
+    }
+  ]
+}
